@@ -1,0 +1,111 @@
+library(xlsx)
+library(dplyr)
+library(timeSeries)
+library(tseries)
+library(forecast)
+library(ggfortify)
+
+
+MyCompany = read.xlsx("Sales data for Reg1 Stores in 12K Report_Mod.xlsx",1)
+MyCompany = MyCompany %>% select(Fiscal.Year,Fiscal.Period,Week.Ending.Dt,Adj.Net.Sls.With.Cpn.Amt)
+
+myts = ts(MyCompany$Adj.Net.Sls.With.Cpn.Amt,start = c(2011,5), end = c(2016,5),frequency = 52)
+
+# Splitting data for train and test
+train = window(myts, end = c(2016,2))
+test = window(myts, start = c(2016,3))
+
+#Decomposing the univariate Time series and finding AR,MA terms for ARIMA
+plot(myts)
+
+dftest = adf.test(myts) # from this d = 0 as the series is stationary
+kpsstest = kpss.test(myts) #rechecking for d
+
+acf(myts) # p = 3
+pacf(myts) # q = 1
+
+#to find seasonal ordering, using autoarima here
+
+auto.arima(train)# we can get seasonal ordering (0,0,1) with this
+
+#The intial p d and q from analysis are 3,0 and 1 respectively
+
+#cross checking with mass building of arima models 
+
+arimaMetricIcVerf <- data.frame()
+  
+  for (d in 0:3) {
+    for (p in 0:3) {
+      for (q in 0:3) {
+        tryCatch({
+          modelArima = arima(train, order = c(p,d,q))
+          fit <- forecast(modelArima,h = 3)
+        }, error = function(e){cat("ERROR :",conditionMessage(e), "\n")})
+        acc <- accuracy(fit,test)
+        MAPE.train <- acc[1,5]
+        MAPE.test <- acc[2,5] # Number 5 indicates the position of MAPE in the accuracy list and 2 indicates test
+        npar <- length(modelArima$coef) + 1
+        nstar <- length(modelArima$residuals) - modelArima$arma[6] - modelArima$arma[7] * modelArima$arma[5]
+        aic = AIC(modelArima)
+        bic = BIC(modelArima)
+        aicc = aic + 2 * npar * (nstar/(nstar - npar - 1) - 1) 
+        Fit = fit$method
+        arimaMetricIcVerf = rbind(arimaMetricIcVerf,cbind.data.frame(MAPE.train,MAPE.test,p,d,q,aic,bic,aicc,Fit))
+        print(paste0(p,d,q,collapse = NULL))
+      }
+      
+    }
+    
+  }
+
+#Fitting model with analyzed values of p,d and q
+
+fit = arima(train,order = c(3,0,1),
+            seasonal = list(order = c(0,0,1),period =52))
+fcast = forecast(fit,h=3)
+accuracy(fcast,test)# TestAccuracy = 90.75%
+
+arimaFit1 = arima(myts,order = c(3,0,1),seasonal = list(order = c(0,0,1),period =52))
+accuracy(arimaFit1)
+arimaFcast1 = forecast(arimaFit1,3)
+
+#Checking model efficiency
+res = residuals(arimaFit1)
+acf(res)
+hist(res,nclass="FD")
+
+#Portmanteau tests 
+# lag=h and fitdf=K
+Box.test(res, lag=52, fitdf=0)#Q
+
+Box.test(res,lag=52, fitdf=0, type="Lj")#Q*
+
+
+#Fitting model with mass built min MAPE values of p,d and q
+arimaFit2 = arima(myts,order = c(1,3,2))
+accuracy(arimaFit2)
+arimaFcast2 = forecast(arimaFit2,3)
+
+print(autoplot(arimaFcast1, ts.colour = 'Blue', predict.colour = 'firebrick1',
+               predict.linetype = 'dashed', conf.int = T,
+               main=paste0("Forecast of weekly Net Sales for Store 22 With ",arimaFcast1$method),
+               xlab = "Time" , ylab = "Net Sales"))
+
+print(autoplot(arimaFcast2, ts.colour = 'Blue', predict.colour = 'firebrick1',
+               predict.linetype = 'dashed', conf.int = T,
+               main=paste0("Forecast of weekly Net Sales for Store 22 With ",arimaFcast2$method),
+               xlab = "Time" , ylab = "Net Sales"))
+
+#So inference that we getting from two forecasts is ARIMA(3,0,1) is working well with data.
+
+#Checking model efficiency
+res = residuals(arimaFit1)
+acf(res)
+hist(res,nclass="FD")
+
+#Portmanteau tests 
+# lag=h and fitdf=K
+Box.test(res, lag=52, fitdf=0)#Q
+
+Box.test(res,lag=52, fitdf=0, type="Lj")#Q*
+
