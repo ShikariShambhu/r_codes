@@ -1,0 +1,223 @@
+library(randomNames)
+library(reshape2)
+library(distr)
+library(plyr)
+
+
+#### FUNCTIONS
+
+# generate random values based on 'inverse trasnform sampling'
+# http://www.r-bloggers.com/tailoring-univariate-probability-distributions/
+
+
+my.pexp.numerical <- function(x, my.fun)
+{
+   # this my.int function allows my CDF to run over vectors
+   my.int <- function(x) integrate(my.fun, lower=0, upper=x)$value
+   # apply the my.int to each element of x
+   sapply(x, FUN=my.int)
+}
+
+
+my.qexp.numerical <- function(q, my.fun)
+{
+   # function to be solved for 0
+   f <- function(P, fixed)
+   {
+      q <- fixed$q
+      # this is the criterion to be minimized by uniroot():
+      criterion <- q - my.pexp.numerical(P, my.fun)
+      return(criterion)
+   }
+
+   # for each element of vector P (the quantiles)
+   P <- numeric(length(q))
+   for(i in 1:length(q))
+   {
+      # parameters that stay fixed
+      fixed <- list(q=q[i])
+      # solving the f for 0 numerically by uniroot():
+      # values where a root will be searched for
+      root.p <- uniroot(f,
+                        lower=0,
+                        upper=17, # may require adjustment
+                        fixed=fixed)
+      P[i] <-root.p$root
+   }
+   return(P)
+}
+
+generate.dist <- function(N, my.fun, min, max){
+   # U is the q's passed to the numeric function, this is the domain of
+   # solutions (y-axis) for cdf values
+   U <- runif(N, min=min, max=max)
+   rnd.draws <- my.qexp.numerical(U, my.fun)
+   return(rnd.draws)
+}
+
+
+# number of emplooyees
+n <- 160000
+
+# gender
+gender <- sample(c("Female", "Male"), n, replace=TRUE, prob=c(0.4,0.6))
+# ethnicity
+ethnicity <- sample(c("African American", "Hispanic", "Asian", "White",
+                        "Native American"),
+                      n, replace=TRUE,
+                      prob=c(0.2, 0.1, 0.05, 0.64, 0.01))
+
+#names
+names <- randomNames(gender=gender, ethnicity=ethnicity)
+names <- colsplit(names, ",", c("first.name", "last.name"))
+last.name <- as.character(names$last.name)
+first.name <- as.character(names$first.name)
+#department
+department <- sample(c("Services", "Marketing", "Human Resources", "Financial",
+                       "Purchasing", "Sales", "IT", "Inventory",
+                       "Quality Assurance", "Insurance", "Licenses", "Law",
+                       "Customer Service"),
+                       n,
+                       replace=TRUE,
+                       prob=c(0.01, 0.1, 0.01, 0.2, 0.1, 0.389, 0.05, 0.01,
+                              0.001, 0.01, 0.01, 0.01, 0.1))
+#age
+age <- as.numeric(sample(18:72,
+              n,
+              replace=TRUE,
+              prob=c(0.015, 0.015, 0.018, 0.018, 0.018, 0.018, 0.018, 0.022,
+                     0.023, 0.022, 0.024, 0.022, 0.02, 0.03, 0.02, 0.02, 0.025,
+                     0.02, 0.03, 0.02, 0.03, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+                     0.024, 0.024, 0.024, 0.024, 0.024, 0.02, 0.02, 0.02, 0.02,
+                     0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.01, 0.01, 0.01, 0.01,
+                     0.01, 0.014, 0.014, 0.014, 0.014, 0.003, 0.001, 0.001,
+                     0.001)))
+
+# tenure
+st <- floor(10000/13000*n)
+nt <- ceiling(3000/13000*n)
+
+slope.dist <- generate.dist(st, function(x) 0.5 - 0.03*x, 0, 4.16)
+norm.dist <- rnorm(nt, 3, 1)
+
+#hist(c(slope.dist,norm.dist), xlim=c(0,17), breaks=30)
+tenure <- as.numeric(round(sample(c(slope.dist,norm.dist)),1))
+tenure[tenure < 0] <- 0
+
+# salary
+
+cs <- floor(10000/10300*n)
+ns <- ceiling(300/10300*n)
+
+chisq.lowsal <- 5000*rchisq(cs, df=5) + 23000
+norm.highsal <- rnorm(ns, 110000, 5000)
+
+salary <- as.numeric(round(sample(c(chisq.lowsal, norm.highsal))))
+
+#marital status
+marital.status <- sample(c("Single", "Married", "Widowed", "Divorced"), n,
+                         replace=TRUE, prob=c(0.29, 0.51, 0.06, 0.14))
+
+# people leader - has people reporting to them
+people.leader <- sample(c(TRUE, FALSE), n, replace=TRUE, prob=c(0.2,0.8))
+
+number.reporting <- rep(0, n)
+number.reporting[people.leader == TRUE] <-
+   rpois(length(people.leader[people.leader == TRUE]), 4)
+
+
+hours.per.week <- as.numeric(sample(c(25,35,37.5,40), n, replace=TRUE,
+                                    prob=c(0.005, 0.01, 0.005, 0.98)))
+
+annual.review.rating <- sample(c("below.average", "meets.expectations",
+                                 "above.expectations",
+                                 "exceeds.all.expectations"),
+                               n,
+                               replace=TRUE,
+                               prob=c(0.01, 0.90, 0.07, 0.02))
+
+military.service.ind <- sample(c(TRUE, FALSE), n, replace=TRUE, prob=c(0.02,
+                                                                       0.98))
+sick.dist.shape <- rchisq(0.98*n, df=5)
+sick.high.tail.peak <- rnorm(0.02*n, 33, 1)
+sick.dist <- sample(c(sick.dist.shape, sick.high.tail.peak))
+
+percent.sick.days.used <- as.numeric(round(floor(sick.dist)/max(sick.dist),2))
+
+empl.df <- data.frame(last.name, first.name, gender, ethnicity,
+                               department, age, tenure, salary, marital.status,
+                               people.leader, number.reporting, hours.per.week,
+                               annual.review.rating, military.service.ind,
+                               percent.sick.days.used)
+
+# 'OBJECTIVE' FUNCTION - This function describes the underlying truth value of
+# whether an employee terminates.
+
+empl.score.df <- empl.df
+empl.score.df$gender <- mapvalues(empl.score.df$gender, c('Female', 'Male'), c(2,1))
+empl.score.df$ethnicity <-
+   as.numeric(as.character(mapvalues(empl.score.df$ethnicity, c("African American",
+                                                  "Hispanic",
+                                                  "Asian",
+                                                  "White",
+                                                  "Native American"),
+                        c(2,2.1,1,1.3,1.5))))
+empl.score.df$department <-
+   as.numeric(as.character(mapvalues(empl.score.df$gender, c("Services",
+                                                             "Marketing",
+                                                             "Human Resources",
+                                                             "Financial",
+                                                             "Purchasing",
+                                                             "Sales",
+                                                             "IT",
+                                                             "Inventory",
+                                                             "Quality Assurance",
+                                                             "Insurance",
+                                                             "Licenses",
+                                                             "Law",
+                                                             "Customer Service"),
+                                                             c(1.1,2.1,1.5,1.6,1.8,1,1.6,1.9,2,1.3,1.6,1.2,1.9))))
+empl.score.df$age <- -0.01*(empl.score.df$age-45)^2+10
+empl.score.df$tenure <- 0.5 - 0.03*(empl.score.df$tenure)
+empl.score.df$salary <- 10 - empl.score.df$salary/20000
+
+empl.score.df$marital.status <- mapvalues(empl.score.df$marital.status,
+                                          c("Single", "Married", "Widowed",
+                                            "Divorced"), c(1.9, 1, 1.2, 1.5))
+empl.score.df$people.leader <- mapvalues(empl.score.df$people.leader, c(TRUE,
+                                                                        FALSE),
+                                         c(1,1.5))
+
+empl.score.df$number.reporting <- 3 - empl.score.df$number.reporting/20
+
+empl.score.df$hours.per.week <- mapvalues(empl.score.df$hours.per.week, c(25, 35, 37.5,40), c(2,1.5,1.3,1))
+
+empl.score.df$annual.review.rating <-
+   mapvalues(empl.score.df$military.service.ind, c("below.average",
+                                                   "meets.expectations",
+                                                   "above.expectations",
+                                                   "exceeds.all.expectations"),
+             c(1,1.2,2,1.3))
+empl.score.df$military.service.ind <- mapvalues(empl.score.df$military.service.ind,
+                                                c(TRUE, FALSE), c(1, 1.5))
+
+empl.score.df$percent.sick.days.used <- 1 + 2*x/3
+
+
+#formula with normalization and coefficients
+
+fake_score <-
+   empl.score.df$gender/max(empl.score.df$gender) +
+   empl.score.df$ethnicity/max(empl.score.df$ethnicity) +
+   empl.score.df$department/max(empl.score.df$department) +
+   1.2*empl.score.df$age/max(empl.score.df$age) +
+   1.5*empl.score.df$tenure/max(empl.score.df$tenure) +
+   2*empl.score.df$salary/max(empl.score.df$tenure) +
+   empl.score.df$marital.status/max(empl.score.df$marital.status) +
+   empl.score.df$people.leader/max(empl.score.df$people.leader) +
+   empl.score.df$number.reporting/max(empl.score.df$number.reporting) +
+   empl.score.df$hours.per.week/max(empl.score.df$hours.per.week) +
+   1.3*empl.score.df$annual.review.rating/max(empl.score.df$annual.review.rating) +
+   empl.score.df$military.service.ind/max(empl.score.df$military.service.ind) +
+   empl.score.df$percent.sick.days.used/max(empl.score.df$percent.sick.days.used)
+
