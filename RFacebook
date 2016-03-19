@@ -1,0 +1,44 @@
+## Using R for Text Mining On Facebook
+
+install.packages("Rfacebook")
+install.packages("httpuv")
+install.packages("RColorBrewer")
+install.packages("RCurl")
+install.packages("rjson")
+install.packages("httr")
+
+library(Rfacebook)
+library(httpuv)
+library(RColorBrewer)
+
+myaccess_token = "put in your facebook access code here"
+options(RCurlOptions = list(verbose = FALSE, capath = system.file("CurlSSL", "cacert.pem", package = "RCurl"), ssl.verifypeer = FALSE))
+me- getUsers("me", token = myaccess_toke)
+me
+my_friends - getFriends(token = myaccess_token, simplify = FALSE)
+str(my_friends)
+table(my_friends)
+pie(table(my_friends$relationship_status),col=brewer.pal(5, "Set1"))
+
+pie(table(my_friends$location), col=brewer.pal(20, "Greens"))
+pie(table(my_friends$locale), col=brewer.pal(4, "Blues"))
+pie(table(my_friends$gender), col=brewer.pal(3, "Oranges"))
+
+textF = "ApplyingR= Facebook This is amazing"
+linkF = ""
+updateStatus(textF, token = myaccess_token, link = linkF)
+
+install.packages("igraph")
+tmp - getNetwork(myaccess_token, format = "adj.matrix")
+library(igraph)
+network - graph.adjacency(tmp, mode = "undirected")
+
+set.seed(1)
+
+L - layout.fruchterman.reingold(network)
+L[,1]=(L[,1]-min(L[,1]))/(max(L[,1])-min(L[,1]))*2-1
+L[,2]= (L[,2]-min(L[,2]))/(max(L[,2])-min(L[,2]))*2-1
+
+pdf("net_work_plot.pdf", width = 50,heigh=50)
+plot(network, layout=L, vetex.size=0, vertex.frame.color = "#0000000", edge.curved=FALSE, edge.color= rainbow(500), vertex.label.cex=3, edge.width=6)
+
